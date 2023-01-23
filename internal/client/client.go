@@ -16,7 +16,7 @@ type Client struct {
 	client  *http.Client
 }
 
-func NewClient(ctx context.Context, addr string, options ...Option) (*Client, error) {
+func NewClient(ctx context.Context, addr string, authcb func(string), options ...Option) (*Client, error) {
 	opts, err := newOptions(options...)
 	if err != nil {
 		return nil, err
@@ -58,7 +58,7 @@ func NewClient(ctx context.Context, addr string, options ...Option) (*Client, er
 	var token *oauth2.Token
 	var rawIdToken interface{}
 	if c.options.deviceFlow {
-		token, rawIdToken, err = newDeviceFlowToken(ctx, resp.DeviceAuthURL, provider.Endpoint().TokenURL, resp.ClientID)
+		token, rawIdToken, err = newDeviceFlowToken(ctx, resp.DeviceAuthURL, provider.Endpoint().TokenURL, resp.ClientID, authcb)
 		if err != nil {
 			return nil, err
 		}

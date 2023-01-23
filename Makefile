@@ -3,16 +3,25 @@ help:
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 .PHONY: all
-all: go-lint yaml-lint markdown-lint apexd
+all: go-lint yaml-lint markdown-lint apexd apex
 
 ##@ Binaries
 
 .PHONY: apexd
 apexd: dist/apexd dist/apexd-linux-arm dist/apexd-linux-amd64 dist/apexd-darwin-amd64 dist/apexd-darwin-arm64 dist/apexd-windows-amd64 ## Build the apexd binary for all architectures
 
+.PHONY: apex
+apex: dist/apex dist/apex-linux-arm dist/apex-linux-amd64 dist/apex-darwin-amd64 dist/apex-darwin-arm64 dist/apex-windows-amd64
+
+APEX_VERSION?=$(shell date +%Y.%m.%d)
+APEX_RELEASE?=$(shell git describe --always)
+APEX_LDFLAGS?=-X main.Version=$(APEX_VERSION)-$(APEX_RELEASE)
+
 COMMON_DEPS=$(wildcard ./internal/**/*.go) go.sum go.mod
 
 APEXD_DEPS=$(COMMON_DEPS) $(wildcard cmd/apexd/*.go)
+
+APEX_DEPS=$(COMMON_DEPS) $(wildcard cmd/apex/*.go)
 
 APISERVER_DEPS=$(COMMON_DEPS) $(wildcard cmd/apiserver/*.go)
 
@@ -22,25 +31,21 @@ dist:
 	mkdir -p $@
 
 dist/apexd: $(APEXD_DEPS) | dist
-	CGO_ENABLED=0 go build -o $@ ./cmd/apexd
+	CGO_ENABLED=0 go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apexd
 
-dist/apexd-linux-arm: $(APEXD_DEPS) | dist
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm go build -o $@ ./cmd/apexd
-
-dist/apexd-linux-amd64: $(APEXD_DEPS) | dist
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o $@ ./cmd/apexd
-
-dist/apexd-darwin-amd64: $(APEXD_DEPS) | dist
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o $@ ./cmd/apexd
-
-dist/apexd-darwin-arm64: $(APEXD_DEPS) | dist
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o $@ ./cmd/apexd
-
-dist/apexd-windows-amd64: $(APEXD_DEPS) | dist
-	CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -o $@ ./cmd/apexd
+dist/apex: $(APEX_DEPS) | dist
+	CGO_ENABLED=0 go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apex
 
 dist/apexctl: $(APEXD_DEPS) | dist
-	CGO_ENABLED=0 go build -o $@ ./cmd/apexctl
+	CGO_ENABLED=0 go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apexctl
+
+dist/apex-%: $(APEX_DEPS) | dist
+	CGO_ENABLED=0 GOOS=$(word 2,$(subst -, ,$(basename $@))) GOARCH=$(word 3,$(subst -, ,$(basename $@))) \
+		go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apex
+
+dist/apexd-%: $(APEXD_DEPS) | dist
+	CGO_ENABLED=0 GOOS=$(word 2,$(subst -, ,$(basename $@))) GOARCH=$(word 3,$(subst -, ,$(basename $@))) \
+		go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apexd
 
 .PHONY: clean
 clean: ## clean built binaries
