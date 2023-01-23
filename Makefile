@@ -214,3 +214,17 @@ cacerts: ## Install the Self-Signed CA Certificate
 	@mkdir -p $(CURDIR)/.certs
 	@kubectl get secret -n apex apex-ca-key-pair -o json | jq -r '.data."ca.crt"' | base64 -d > $(CURDIR)/.certs/rootCA.pem
 	@CAROOT=$(CURDIR)/.certs mkcert -install
+
+##@ Packaging
+
+.PHONY: rpm
+rpm: apex apexd
+	@if [ ! -d rpmbuild/SOURCES ]; then mkdir -p rpmbuild/SOURCES; fi
+	rm -rf rpmbuild/BUILD/*
+	tar -czvf /tmp/apex-${APEX_VERSION}.${APEX_RELEASE}.tar.gz \
+		--transform 's,^,apex-${APEX_VERSION}/,' dist/*linux-amd64 contrib
+	mv /tmp/apex-${APEX_VERSION}.${APEX_RELEASE}.tar.gz rpmbuild/SOURCES/.
+	rpmbuild -D "_topdir $(PWD)/rpmbuild" \
+		-D "_version ${APEX_VERSION}" \
+		-D "_release ${APEX_RELEASE}" \
+		-ba contrib/rpm/apex.spec
