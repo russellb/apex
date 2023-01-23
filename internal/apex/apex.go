@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/redhat-et/apex/internal/util"
 	"net"
 	"net/url"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/redhat-et/apex/internal/util"
 
 	"github.com/google/uuid"
 	"github.com/redhat-et/apex/internal/client"
@@ -31,6 +32,15 @@ const (
 	WgDefaultPort     = 51820
 	wgIface           = "wg0"
 	WgWindowsConfPath = "C:/apex/"
+)
+
+const (
+	// when apex is first starting up
+	ApexStatusStarting = iota
+	// when apex is waiting for auth and the user must complete the OTP auth flow
+	ApexStatusAuth
+	// apex is up and running normally
+	ApexStatusRunning
 )
 
 type Apex struct {
@@ -62,6 +72,12 @@ type Apex struct {
 	hostname             string
 	symmetricNat         bool
 	logger               *zap.SugaredLogger
+	// See the ApexStatus* constants
+	status    int
+	statusMsg string
+	version   string
+	username  string
+	password  string
 }
 
 type wgConfig struct {
@@ -81,7 +97,8 @@ type wgLocalConfig struct {
 	ListenPort int
 }
 
-func NewApex(ctx context.Context, logger *zap.SugaredLogger,
+func NewApex(ctx context.Context,
+	logger *zap.SugaredLogger,
 	controller string,
 	username string,
 	password string,
@@ -94,6 +111,7 @@ func NewApex(ctx context.Context, logger *zap.SugaredLogger,
 	stun bool,
 	hubRouter bool,
 	relayOnly bool,
+	version string,
 ) (*Apex, error) {
 	if err := binaryChecks(); err != nil {
 		return nil, err
@@ -107,18 +125,6 @@ func NewApex(ctx context.Context, logger *zap.SugaredLogger,
 	// Force controller URL be api.${DOMAIN}
 	controllerURL.Host = "api." + controllerURL.Host
 	controllerURL.Path = ""
-
-	var option client.Option
-	if username == "" {
-		option = client.WithDeviceFlow()
-	} else {
-		option = client.WithPasswordGrant(username, password)
-	}
-
-	client, err := client.NewClient(ctx, controllerURL.String(), option)
-	if err != nil {
-		return nil, err
-	}
 
 	if err := checkOS(logger); err != nil {
 		return nil, err
@@ -146,7 +152,6 @@ func NewApex(ctx context.Context, logger *zap.SugaredLogger,
 		childPrefix:            childPrefix,
 		stun:                   stun,
 		hubRouter:              hubRouter,
-		client:                 client,
 		os:                     GetOS(),
 		peerCache:              make(map[uuid.UUID]models.Peer),
 		keyCache:               make(map[uuid.UUID]string),
@@ -154,6 +159,10 @@ func NewApex(ctx context.Context, logger *zap.SugaredLogger,
 		hostname:               hostname,
 		symmetricNat:           relayOnly,
 		logger:                 logger,
+		status:                 ApexStatusStarting,
+		version:                version,
+		username:               username,
+		password:               password,
 	}
 
 	ax.tunnelIface = defaultTunnelDev(ax.os)
@@ -171,8 +180,32 @@ func NewApex(ctx context.Context, logger *zap.SugaredLogger,
 	return ax, nil
 }
 
+func (ax *Apex) SetStatus(status int, msg string) {
+	ax.statusMsg = msg
+	ax.status = status
+}
+
 func (ax *Apex) Start(ctx context.Context, wg *sync.WaitGroup) error {
 	var err error
+
+	if err := ax.CtlServerStart(ctx, wg); err != nil {
+		return fmt.Errorf("CtlServerStart(): %+v", err)
+	}
+
+	var option client.Option
+	if ax.username == "" {
+		option = client.WithDeviceFlow()
+	} else {
+		option = client.WithPasswordGrant(ax.username, ax.password)
+	}
+	ax.client, err = client.NewClient(ctx, ax.controllerURL.String(), func(msg string) {
+		ax.SetStatus(ApexStatusAuth, msg)
+	}, option)
+	if err != nil {
+		return err
+	}
+
+	ax.SetStatus(ApexStatusRunning, "")
 
 	if err := ax.handleKeys(); err != nil {
 		return fmt.Errorf("handleKeys: %+v", err)

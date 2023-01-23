@@ -18,6 +18,9 @@ const (
 	encodeColumn     = "column"
 )
 
+// This variable is set using ldflags at build time. See Makefile for details.
+var Version = "dev"
+
 func main() {
 	app := &cli.App{
 		Name: "apexctl",
@@ -52,6 +55,14 @@ func main() {
 		},
 		Commands: []*cli.Command{
 			{
+				Name:  "version",
+				Usage: "Get the version of apexctl",
+				Action: func(cCtx *cli.Context) error {
+					fmt.Printf("version: %s\n", Version)
+					return nil
+				},
+			},
+			{
 				Name:  "zone",
 				Usage: "commands relating to zones",
 				Subcommands: []*cli.Command{
@@ -60,7 +71,7 @@ func main() {
 						Usage: "list zones",
 						Action: func(cCtx *cli.Context) error {
 							c, err := client.NewClient(cCtx.Context,
-								cCtx.String("host"),
+								cCtx.String("host"), nil,
 								client.WithPasswordGrant(
 									cCtx.String("username"),
 									cCtx.String("password"),
@@ -96,7 +107,7 @@ func main() {
 						},
 						Action: func(cCtx *cli.Context) error {
 							c, err := client.NewClient(cCtx.Context,
-								cCtx.String("host"),
+								cCtx.String("host"), nil,
 								client.WithPasswordGrant(
 									cCtx.String("username"),
 									cCtx.String("password"),
@@ -124,7 +135,7 @@ func main() {
 						},
 						Action: func(cCtx *cli.Context) error {
 							c, err := client.NewClient(cCtx.Context,
-								cCtx.String("host"),
+								cCtx.String("host"), nil,
 								client.WithPasswordGrant(
 									cCtx.String("username"),
 									cCtx.String("password"),
@@ -150,7 +161,7 @@ func main() {
 						},
 						Action: func(cCtx *cli.Context) error {
 							c, err := client.NewClient(cCtx.Context,
-								cCtx.String("host"),
+								cCtx.String("host"), nil,
 								client.WithPasswordGrant(
 									cCtx.String("username"),
 									cCtx.String("password"),
@@ -181,7 +192,7 @@ func main() {
 						},
 						Action: func(cCtx *cli.Context) error {
 							c, err := client.NewClient(cCtx.Context,
-								cCtx.String("host"),
+								cCtx.String("host"), nil,
 								client.WithPasswordGrant(
 									cCtx.String("username"),
 									cCtx.String("password"),
@@ -200,7 +211,7 @@ func main() {
 						Usage: "list all peers",
 						Action: func(cCtx *cli.Context) error {
 							c, err := client.NewClient(cCtx.Context,
-								cCtx.String("host"),
+								cCtx.String("host"), nil,
 								client.WithPasswordGrant(
 									cCtx.String("username"),
 									cCtx.String("password"),
@@ -224,7 +235,7 @@ func main() {
 						},
 						Action: func(cCtx *cli.Context) error {
 							c, err := client.NewClient(cCtx.Context,
-								cCtx.String("host"),
+								cCtx.String("host"), nil,
 								client.WithPasswordGrant(
 									cCtx.String("username"),
 									cCtx.String("password"),
@@ -249,7 +260,7 @@ func main() {
 						Usage: "list all devices",
 						Action: func(cCtx *cli.Context) error {
 							c, err := client.NewClient(cCtx.Context,
-								cCtx.String("host"),
+								cCtx.String("host"), nil,
 								client.WithPasswordGrant(
 									cCtx.String("username"),
 									cCtx.String("password"),
@@ -273,7 +284,7 @@ func main() {
 						},
 						Action: func(cCtx *cli.Context) error {
 							c, err := client.NewClient(cCtx.Context,
-								cCtx.String("host"),
+								cCtx.String("host"), nil,
 								client.WithPasswordGrant(
 									cCtx.String("username"),
 									cCtx.String("password"),
@@ -298,7 +309,7 @@ func main() {
 						Usage: "list all users",
 						Action: func(cCtx *cli.Context) error {
 							c, err := client.NewClient(cCtx.Context,
-								cCtx.String("host"),
+								cCtx.String("host"), nil,
 								client.WithPasswordGrant(
 									cCtx.String("username"),
 									cCtx.String("password"),
@@ -322,7 +333,7 @@ func main() {
 						},
 						Action: func(cCtx *cli.Context) error {
 							c, err := client.NewClient(cCtx.Context,
-								cCtx.String("host"),
+								cCtx.String("host"), nil,
 								client.WithPasswordGrant(
 									cCtx.String("username"),
 									cCtx.String("password"),

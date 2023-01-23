@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"github.com/urfave/cli/v2"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"github.com/urfave/cli/v2"
 
 	"github.com/redhat-et/apex/internal/apex"
 	"go.uber.org/zap"
@@ -16,6 +17,9 @@ import (
 const (
 	apexLogEnv = "APEX_LOGLEVEL"
 )
+
+// This variable is set using ldflags at build time. See Makefile for details.
+var Version = "dev"
 
 func main() {
 	// set the log level
@@ -142,6 +146,7 @@ func main() {
 				cCtx.Bool("stun"),
 				cCtx.Bool("hub-router"),
 				cCtx.Bool("relay-only"),
+				Version,
 			)
 			if err != nil {
 				log.Fatal(err)
