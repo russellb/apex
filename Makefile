@@ -2,8 +2,10 @@
 help:
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
+##@ All
+
 .PHONY: all
-all: go-lint yaml-lint apexd apex
+all: go-lint yaml-lint apexd apex ## Run linters, build apex(d)
 
 ##@ Binaries
 
@@ -11,7 +13,7 @@ all: go-lint yaml-lint apexd apex
 apexd: dist/apexd dist/apexd-linux-arm dist/apexd-linux-amd64 dist/apexd-darwin-amd64 dist/apexd-darwin-arm64 dist/apexd-windows-amd64 ## Build the apexd binary for all architectures
 
 .PHONY: apex
-apex: dist/apex dist/apex-linux-arm dist/apex-linux-amd64 dist/apex-darwin-amd64 dist/apex-darwin-arm64 dist/apex-windows-amd64
+apex: dist/apex dist/apex-linux-arm dist/apex-linux-amd64 dist/apex-darwin-amd64 dist/apex-darwin-arm64 dist/apex-windows-amd64 ## Build the apex binary for all architectures
 
 APEX_VERSION?=$(shell date +%Y.%m.%d)
 APEX_RELEASE?=$(shell git describe --always)
@@ -214,7 +216,7 @@ cacerts: ## Install the Self-Signed CA Certificate
 ##@ Packaging
 
 .PHONY: rpm
-rpm: apex apexd
+rpm: apex apexd ## Build an rpm with apexd, apex, and systemd integration
 	@if [ ! -d rpmbuild/SOURCES ]; then mkdir -p rpmbuild/SOURCES; fi
 	rm -rf rpmbuild/BUILD/*
 	tar -czvf /tmp/apex-${APEX_VERSION}.${APEX_RELEASE}.tar.gz \
