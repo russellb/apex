@@ -2,6 +2,18 @@
 help:
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
+#
+# If you want to see the full commands, run:
+#   NOISY_BUILD=y make
+#
+ifeq ($(NOISY_BUILD),)
+    ECHO_PREFIX=@
+    CMD_PREFIX=@
+else
+    ECHO_PREFIX=@\#
+    CMD_PREFIX=
+endif
+
 ##@ All
 
 .PHONY: all
@@ -30,23 +42,28 @@ APISERVER_DEPS=$(COMMON_DEPS) $(wildcard cmd/apiserver/*.go)
 TAG=$(shell git rev-parse HEAD)
 
 dist:
-	mkdir -p $@
+	$(CMD_PREFIX) mkdir -p $@
 
 dist/apexd: $(APEXD_DEPS) | dist
-	CGO_ENABLED=0 go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apexd
+	$(ECHO_PREFIX) printf "  %-12s $@\n" "[GO BUILD]"
+	$(CMD_PREFIX) CGO_ENABLED=0 go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apexd
 
 dist/apex: $(APEX_DEPS) | dist
-	CGO_ENABLED=0 go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apex
+	$(ECHO_PREFIX) printf "  %-12s $@\n" "[GO BUILD]"
+	$(CMD_PREFIX) CGO_ENABLED=0 go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apex
 
 dist/apexctl: $(APEXD_DEPS) | dist
-	CGO_ENABLED=0 go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apexctl
+	$(ECHO_PREFIX) printf "  %-12s $@\n" "[GO BUILD]"
+	$(CMD_PREFIX) CGO_ENABLED=0 go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apexctl
 
 dist/apex-%: $(APEX_DEPS) | dist
-	CGO_ENABLED=0 GOOS=$(word 2,$(subst -, ,$(basename $@))) GOARCH=$(word 3,$(subst -, ,$(basename $@))) \
+	$(ECHO_PREFIX) printf "  %-12s $@\n" "[GO BUILD]"
+	$(CMD_PREFIX) CGO_ENABLED=0 GOOS=$(word 2,$(subst -, ,$(basename $@))) GOARCH=$(word 3,$(subst -, ,$(basename $@))) \
 		go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apex
 
 dist/apexd-%: $(APEXD_DEPS) | dist
-	CGO_ENABLED=0 GOOS=$(word 2,$(subst -, ,$(basename $@))) GOARCH=$(word 3,$(subst -, ,$(basename $@))) \
+	$(ECHO_PREFIX) printf "  %-12s $@\n" "[GO BUILD]"
+	$(CMD_PREFIX) CGO_ENABLED=0 GOOS=$(word 2,$(subst -, ,$(basename $@))) GOARCH=$(word 3,$(subst -, ,$(basename $@))) \
 		go build -ldflags="$(APEX_LDFLAGS)" -o $@ ./cmd/apexd
 
 .PHONY: clean
@@ -62,7 +79,8 @@ go-lint: $(APEXD_DEPS) $(APISERVER_DEPS) ## Lint the go code
 		echo "See: https://golangci-lint.run/usage/install/#local-installation" ; \
 		exit 1 ; \
 	fi
-	golangci-lint run --enable gosec ./...
+	$(ECHO_PREFIX) printf "  %-12s ./...\n" "[GO LINT]"
+	$(CMD_PREFIX) golangci-lint run --enable gosec ./...
 
 .PHONY: yaml-lint
 yaml-lint: ## Lint the yaml files
@@ -71,7 +89,8 @@ yaml-lint: ## Lint the yaml files
 		echo "See: https://yamllint.readthedocs.io/en/stable/quickstart.html" ; \
 		exit 1 ; \
 	fi
-	yamllint -c .yamllint.yaml deploy --strict
+	$(ECHO_PREFIX) printf "  %-12s ./...\n" "[YAML LINT]"
+	$(CMD_PREFIX) yamllint -c .yamllint.yaml deploy --strict
 
 .PHONY: gen-docs
 gen-docs: ## Generate API docs
@@ -226,3 +245,8 @@ rpm: apex apexd ## Build an rpm with apexd, apex, and systemd integration
 		-D "_version ${APEX_VERSION}" \
 		-D "_release ${APEX_RELEASE}" \
 		-ba contrib/rpm/apex.spec
+
+# Nothing to see here
+.PHONY: cat
+cat:
+	$(CMD_PREFIX) docker run -it --rm --name nyancat 06kellyjac/nyancat
