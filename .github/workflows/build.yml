@@ -335,3 +335,12 @@ jobs:
       - name: copy binaries to s3
         run: |
           aws s3 sync . s3://apex-net/
+
+  build-rpm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: install dependencies
+        run: sudo apt -y install mock
+      - name: build rpm
+        run: make rpm
