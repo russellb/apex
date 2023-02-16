@@ -251,6 +251,26 @@ rpm: apex apexd ## Build an rpm with apexd, apex, and systemd integration
 		-D "_release ${APEX_RELEASE}" \
 		-ba contrib/rpm/apex.spec
 
+dist/rpm:
+	$(CMD_PREFIX) mkdir -p dist/rpm
+
+.PHONY: srpm
+srpm: dist/rpm
+	go mod vendor
+	rm -rf dist/rpm/apex-${APEX_RELEASE}
+	rm -f dist/rpm/apex-${APEX_RELEASE}.tar.gz
+	git archive --format=tar.gz -o dist/rpm/apex-${APEX_RELEASE}.tar.gz --prefix=apex-${APEX_RELEASE}/ ${APEX_RELEASE}
+	cd dist/rpm && tar xvzf apex-${APEX_RELEASE}.tar.gz
+	mv vendor dist/rpm/apex-${APEX_RELEASE}/.
+	cd dist/rpm && tar czvf apex-${APEX_RELEASE}.tar.gz apex-${APEX_RELEASE}
+	cp contrib/rpm/golang-github-redhat-et-apex.spec.in contrib/rpm/golang-github-redhat-et-apex.spec
+	sed -i -e "s/##APEX_COMMIT##/${APEX_RELEASE}/" contrib/rpm/golang-github-redhat-et-apex.spec
+	mock --buildsrpm -D "_commit ${APEX_RELEASE}" --spec contrib/rpm/golang-github-redhat-et-apex.spec --sources dist/rpm/
+
+.PHONY: mock
+mock:
+	mock --rebuild --without check ./golang-github-redhat-et-apex-0-0.1.20230216gitc3054bb.fc37.src.rpm
+
 # Nothing to see here
 .PHONY: cat
 cat:
