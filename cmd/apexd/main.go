@@ -10,6 +10,9 @@ import (
 
 	"github.com/urfave/cli/v2"
 
+	"net/http"
+	_ "net/http/pprof"
+
 	"github.com/redhat-et/apex/internal/apex"
 	"go.uber.org/zap"
 )
@@ -19,6 +22,9 @@ const (
 )
 
 func main() {
+	go func() {
+		http.ListenAndServe(":11234", nil)
+	}()
 	// set the log level
 	debug := os.Getenv(apexLogEnv)
 	var logger *zap.Logger
