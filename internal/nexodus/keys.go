@@ -11,6 +11,8 @@ import (
 
 // default key pair file locations (windows needs work)
 const (
+	workdirPublicKeyFile  = "public.key"
+	workdirPrivateKeyFile = "private.key"
 	linuxPublicKeyFile    = "/etc/wireguard/public.key"
 	linuxPrivateKeyFile   = "/etc/wireguard/private.key"
 	darwinPublicKeyFile   = "/usr/local/etc/wireguard/public.key"

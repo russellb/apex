@@ -147,6 +147,7 @@ func main() {
 				Required: false,
 			},
 		},
+
 		Before: func(c *cli.Context) error {
 			if c.IsSet("clean") {
 				log.Print("Cleaning up any existing interfaces")
@@ -186,7 +187,7 @@ func main() {
 				cCtx.Bool("discovery-node"),
 				cCtx.Bool("relay-only"),
 				cCtx.Bool("insecure-skip-tls-verify"),
-				Version,
+				Version, false,
 			)
 			if err != nil {
 				logger.Fatal(err.Error())

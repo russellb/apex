@@ -34,7 +34,7 @@ endif
 ##@ All
 
 .PHONY: all
-all: gen-docs go-lint yaml-lint md-lint ui-lint nexd nexctl ## Run linters and build nexd
+all: gen-docs go-lint yaml-lint md-lint ui-lint nexd nexctl nextun ## Run linters and build nexd
 
 ##@ Binaries
 
@@ -44,11 +44,16 @@ nexd: dist/nexd dist/nexd-linux-arm dist/nexd-linux-amd64 dist/nexd-darwin-amd64
 .PHONY: nexctl
 nexctl: dist/nexctl dist/nexctl-linux-arm dist/nexctl-linux-amd64 dist/nexctl-darwin-amd64 dist/nexctl-darwin-arm64 dist/nexctl-windows-amd64 ## Build the nexctl binary for all architectures
 
+.PHONY: nextun
+nextun: dist/nextun dist/nextun-linux-arm dist/nextun-linux-amd64 dist/nextun-darwin-amd64 dist/nextun-darwin-arm64 dist/nextun-windows-amd64 ## Build the nextun binary for all architectures
+
 COMMON_DEPS=$(wildcard ./internal/**/*.go) go.sum go.mod
 
 NEXD_DEPS=$(COMMON_DEPS) $(wildcard cmd/nexd/*.go)
 
 NEXCTL_DEPS=$(COMMON_DEPS) $(wildcard cmd/nexctl/*.go)
+
+NEXTUN_DEPS=$(COMMON_DEPS) $(wildcard cmd/nextun/*.go)
 
 APISERVER_DEPS=$(COMMON_DEPS) $(wildcard cmd/apiserver/*.go)
 
@@ -65,6 +70,10 @@ dist/nexctl: $(NEXCTL_DEPS) | dist
 	$(ECHO_PREFIX) printf "  %-12s $@\n" "[GO BUILD]"
 	$(CMD_PREFIX) CGO_ENABLED=0 go build -gcflags="$(NEXODUS_GCFLAGS)" -ldflags="$(NEXODUS_LDFLAGS)" -o $@ ./cmd/nexctl
 
+dist/nextun: $(NEXTUN_DEPS) | dist
+	$(ECHO_PREFIX) printf "  %-12s $@\n" "[GO BUILD]"
+	$(CMD_PREFIX) CGO_ENABLED=0 go build -gcflags="$(NEXODUS_GCFLAGS)" -ldflags="$(NEXODUS_LDFLAGS)" -o $@ ./cmd/nextun
+
 dist/nexd-%: $(NEXD_DEPS) | dist
 	$(ECHO_PREFIX) printf "  %-12s $@\n" "[GO BUILD]"
 	$(CMD_PREFIX) CGO_ENABLED=0 GOOS=$(word 2,$(subst -, ,$(basename $@))) GOARCH=$(word 3,$(subst -, ,$(basename $@))) \
@@ -74,6 +83,11 @@ dist/nexctl-%: $(NEXCTL_DEPS) | dist
 	$(ECHO_PREFIX) printf "  %-12s $@\n" "[GO BUILD]"
 	$(CMD_PREFIX) CGO_ENABLED=0 GOOS=$(word 2,$(subst -, ,$(basename $@))) GOARCH=$(word 3,$(subst -, ,$(basename $@))) \
 		go build -gcflags="$(NEXODUS_GCFLAGS)" -ldflags="$(NEXODUS_LDFLAGS)" -o $@ ./cmd/nexctl
+
+dist/nextun-%: $(NEXTUN_DEPS) | dist
+	$(ECHO_PREFIX) printf "  %-12s $@\n" "[GO BUILD]"
+	$(CMD_PREFIX) CGO_ENABLED=0 GOOS=$(word 2,$(subst -, ,$(basename $@))) GOARCH=$(word 3,$(subst -, ,$(basename $@))) \
+		go build -gcflags="$(NEXODUS_GCFLAGS)" -ldflags="$(NEXODUS_LDFLAGS)" -o $@ ./cmd/nextun
 
 .PHONY: clean
 clean: ## clean built binaries

@@ -21,6 +21,9 @@ import (
 	"github.com/nexodus-io/nexodus/internal/util"
 	"go.uber.org/zap"
 	"golang.org/x/term"
+	"golang.zx2c4.com/wireguard/device"
+	"golang.zx2c4.com/wireguard/tun"
+	"golang.zx2c4.com/wireguard/tun/netstack"
 )
 
 const (
@@ -82,6 +85,12 @@ type Nexodus struct {
 	username      string
 	password      string
 	skipTlsVerify bool
+	userspaceMode bool
+	userspaceTun  tun.Device
+	UserspaceNet  *netstack.Net
+	userspaceDev  *device.Device
+	ingresProxies []*UsProxy
+	egressProxies []*UsProxy
 }
 
 type wgConfig struct {
@@ -117,7 +126,7 @@ func NewNexodus(ctx context.Context,
 	discoveryNode bool,
 	relayOnly bool,
 	insecureSkipTlsVerify bool,
-	version string,
+	version string, userspaceMode bool,
 ) (*Nexodus, error) {
 	if err := binaryChecks(); err != nil {
 		return nil, err
@@ -169,9 +178,10 @@ func NewNexodus(ctx context.Context,
 		username:            username,
 		password:            password,
 		skipTlsVerify:       insecureSkipTlsVerify,
+		userspaceMode:       userspaceMode,
 	}
 
-	ax.tunnelIface = defaultTunnelDev()
+	ax.tunnelIface = ax.defaultTunnelDev()
 
 	if ax.relay || ax.discoveryNode {
 		ax.listenPort = WgDefaultPort
@@ -199,10 +209,12 @@ func (ax *Nexodus) SetStatus(status int, msg string) {
 func (ax *Nexodus) Start(ctx context.Context, wg *sync.WaitGroup) error {
 	var err error
 
-	if err := ax.CtlServerStart(ctx, wg); err != nil {
-		return fmt.Errorf("CtlServerStart(): %w", err)
+	// nexd only
+	if !ax.userspaceMode {
+		if err := ax.CtlServerStart(ctx, wg); err != nil {
+			return fmt.Errorf("CtlServerStart(): %w", err)
+		}
 	}
-
 	var options []client.Option
 	if ax.username == "" {
 		options = append(options, client.WithDeviceFlow())
@@ -406,10 +418,21 @@ func (ax *Nexodus) Start(ctx context.Context, wg *sync.WaitGroup) error {
 		})
 	})
 
+	for _, proxy := range ax.ingresProxies {
+		proxy.Start(ctx, wg, ax.UserspaceNet)
+	}
+	for _, proxy := range ax.egressProxies {
+		proxy.Start(ctx, wg, ax.UserspaceNet)
+	}
+
 	return nil
 }
 
 func (ax *Nexodus) Keepalive() {
+	if ax.userspaceMode {
+		ax.logger.Debugf("Keepalive not yet implemented in userspace mode")
+		return
+	}
 	ax.logger.Debug("Sending Keepalive")
 	var peerEndpoints []string
 	if !ax.relay {
@@ -631,4 +654,18 @@ func (ax *Nexodus) getPeerListing() ([]models.Device, error) {
 	}
 
 	return peerListing, nil
+}
+
+func (ax *Nexodus) setupInterface() error {
+	if ax.userspaceMode {
+		return ax.setupInterfaceUS()
+	}
+	return ax.setupInterfaceOS()
+}
+
+func (ax *Nexodus) defaultTunnelDev() string {
+	if ax.userspaceMode {
+		return ax.defaultTunnelDevUS()
+	}
+	return defaultTunnelDevOS()
 }

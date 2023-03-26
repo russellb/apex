@@ -12,6 +12,9 @@ RUN CGO_ENABLED=0 go build \
 RUN CGO_ENABLED=0 go build \
     -ldflags="-extldflags=-static" \
     -o ./dist/nexctl ./cmd/nexctl
+RUN CGO_ENABLED=0 go build \
+    -ldflags="-extldflags=-static" \
+    -o ./dist/nextun ./cmd/nextun
 
 FROM alpine:3.16 as alpine
 RUN apk add --no-cache \
@@ -22,6 +25,7 @@ RUN apk add --no-cache \
     ca-certificates
 COPY --from=build /src/dist/nexd /bin/nexd
 COPY --from=build /src/dist/nexctl /bin/nexctl
+COPY --from=build /src/dist/nextun /bin/nextun
 COPY ./hack/update-ca.sh /update-ca.sh
 RUN chmod a+x /update-ca.sh
 
@@ -40,6 +44,7 @@ RUN dnf update -qy && \
     dnf clean all
 COPY --from=build /src/dist/nexd /bin/nexd
 COPY --from=build /src/dist/nexctl /bin/nexctl
+COPY --from=build /src/dist/nextun /bin/nextun
 COPY ./hack/update-ca.sh /update-ca.sh
 RUN chmod a+x /update-ca.sh
 
@@ -61,5 +66,6 @@ RUN apt-get update -qy && \
     apt-get clean
 COPY --from=build /src/dist/nexd /bin/nexd
 COPY --from=build /src/dist/nexctl /bin/nexctl
+COPY --from=build /src/dist/nextun /bin/nextun
 COPY ./hack/update-ca.sh /update-ca.sh
 RUN chmod a+x /update-ca.sh
