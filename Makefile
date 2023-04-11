@@ -528,16 +528,30 @@ cacerts: ## Install the Self-Signed CA Certificate
 dist/rpm:
 	$(CMD_PREFIX) mkdir -p dist/rpm
 
+MOCK_ROOTS:=fedora-37-x86_64 fedora-38-x86_64
+MOCK_DEPS:=golang systemd-rpm-macros systemd-units
+
 .PHONY: image-mock
 image-mock:
-	docker build -f Containerfile.mock -t quay.io/nexodus/mock:$(TAG) .
-	docker tag quay.io/nexodus/mock:$(TAG) quay.io/nexodus/mock:latest
+	docker build -f Containerfile.mock -t quay.io/nexodus/mock:base .
+	docker rm -f mock-base
+	docker run --rm --name mock-base --privileged=true -d quay.io/nexodus/mock:base sleep 1800
+	for MOCK_ROOT in $(MOCK_ROOTS) ; do \
+		echo "Building mock root for $$MOCK_ROOT" ; \
+		docker exec -it mock-base mock -r $$MOCK_ROOT --init ; \
+		for MOCK_DEP in $(MOCK_DEPS) ; do \
+			echo "Installing $$MOCK_DEP into $$MOCK_ROOT" ; \
+			docker exec -it mock-base mock -r $$MOCK_ROOT --no-clean --no-cleanup-after --install $$MOCK_DEP ; \
+		done ; \
+	done
+	docker commit mock-base quay.io/nexodus/mock:latest
+	docker rm -f mock-base
 
 MOCK_ROOT?=fedora-37-x86_64
 SRPM_DISTRO?=fc37
 
 .PHONY: srpm
-srpm: dist/rpm image-mock manpages ## Build a source RPM
+srpm: dist/rpm manpages ## Build a source RPM
 	go mod vendor
 	rm -rf dist/rpm/nexodus-${NEXODUS_RELEASE}
 	rm -f dist/rpm/nexodus-${NEXODUS_RELEASE}.tar.gz
@@ -566,7 +580,7 @@ contrib/man:
 	$(CMD_PREFIX) mkdir -p contrib/man
 
 .PHONY: manpages
-manpages: contrib/man dist/nexd dist/nexctl image-mock ## Generate manpages in ./contrib/man
+manpages: contrib/man dist/nexd dist/nexctl ## Generate manpages in ./contrib/man
 	dist/nexd -h | docker run -i --rm --name txt2man quay.io/nexodus/mock:latest txt2man -t nexd | gzip > contrib/man/nexd.8.gz
 	dist/nexctl -h | docker run -i --rm --name txt2man quay.io/nexodus/mock:latest txt2man -t nexctl | gzip > contrib/man/nexctl.8.gz
 
