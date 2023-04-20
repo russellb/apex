@@ -33,7 +33,7 @@ func TestProxyEgress(t *testing.T) {
 	defer stop()
 
 	// start nexodus on the nodes
-	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay", "--enable-discovery")
+	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay")
 	err := helper.nexdStatus(ctx, node1)
 	require.NoError(err)
 
@@ -99,7 +99,7 @@ func TestProxyEgressUDP(t *testing.T) {
 
 	helper.Logf("Starting nexd on node1")
 	// start nexodus on the nodes
-	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay", "--enable-discovery")
+	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay")
 	err := helper.nexdStatus(ctx, node1)
 	require.NoError(err)
 
@@ -183,7 +183,7 @@ func TestProxyEgressMultipleRules(t *testing.T) {
 	defer stop()
 
 	// start nexodus on the nodes
-	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay", "--enable-discovery")
+	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay")
 	err := helper.nexdStatus(ctx, node1)
 	require.NoError(err)
 
@@ -268,7 +268,7 @@ func TestProxyIngress(t *testing.T) {
 	defer stop()
 
 	// start nexodus on the nodes
-	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay", "--enable-discovery")
+	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay")
 	err := helper.nexdStatus(ctx, node1)
 	require.NoError(err)
 
@@ -331,7 +331,7 @@ func TestProxyIngressUDP(t *testing.T) {
 
 	helper.Logf("Starting nexd on node1")
 	// start nexodus on the nodes
-	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay", "--enable-discovery")
+	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay")
 	err := helper.nexdStatus(ctx, node1)
 	require.NoError(err)
 
@@ -412,7 +412,7 @@ func TestProxyIngressMultipleRules(t *testing.T) {
 	defer stop()
 
 	// start nexodus on the nodes
-	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay", "--enable-discovery")
+	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay")
 	err := helper.nexdStatus(ctx, node1)
 	require.NoError(err)
 
@@ -494,7 +494,7 @@ func TestProxyIngressAndEgress(t *testing.T) {
 	defer stop()
 
 	// start nexodus on the nodes
-	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay", "--enable-discovery")
+	helper.runNexd(ctx, node1, "--username", username, "--password", password, "relay")
 
 	// validate nexd has started on the discovery node
 	err := helper.nexdStatus(ctx, node1)
