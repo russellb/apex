@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexd-proxy
+  namespace: ${NAMESPACE}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nexd-proxy
+  template:
+    metadata:
+      labels:
+        app: nexd-proxy
+    spec:
+      containers:
+      - name: my-container
+        image: quay.io/nexodus/nexd
+        command: ["sh"]
+        args: ["-c", "ln -s /etc/wireguard/private.key /private.key; ln -s /etc/wireguard/public.key /public.key; nexd proxy --ingress tcp:80:nginx-service.${NAMESPACE}.svc.cluster.local:80 https://qa.nexodus.io"]
+        env:
+        - name: NEXD_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: nexodus-credentials
+              key: username
+        - name: NEXD_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: nexodus-credentials
+              key: password
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: wireguard-keys
+          mountPath: /etc/wireguard/
+      volumes:
+      - name: wireguard-keys
+        secret:
+          secretName: wireguard-keys
