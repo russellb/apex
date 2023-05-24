@@ -81,8 +81,10 @@ type userspaceWG struct {
 
 type deviceCacheEntry struct {
 	device public.ModelsDevice
-	// the last time this device was updated
+	// the last time the endpoints of this device were updated
 	lastUpdated time.Time
+	// We have currently fallen back to reflexive peering for this device.
+	reflexivePeeringFallback bool
 }
 
 type Nexodus struct {
@@ -612,6 +614,29 @@ func (nx *Nexodus) addToDeviceCache(p public.ModelsDevice) {
 	}
 }
 
+func (nx *Nexodus) updateDeviceCache(p public.ModelsDevice) {
+	dOld, ok := nx.deviceCache[p.PublicKey]
+	if !ok {
+		nx.addToDeviceCache(p)
+		return
+	}
+
+	dNew := deviceCacheEntry{
+		device:                   p,
+		lastUpdated:              dOld.lastUpdated,
+		reflexivePeeringFallback: dOld.reflexivePeeringFallback,
+	}
+
+	// Reset the time when endpoints last changed as well as the reflexive peering fallback
+	if !reflect.DeepEqual(dOld.device.Endpoints, p.Endpoints) {
+		nx.logger.Debugf("endpoint change detected for device %s", p.PublicKey)
+		dNew.lastUpdated = time.Now()
+		dNew.reflexivePeeringFallback = false
+	}
+
+	nx.deviceCache[p.PublicKey] = dNew
+}
+
 func (ax *Nexodus) Reconcile() error {
 	peerMap, resp, err := ax.informer.Execute()
 	if err != nil {
@@ -622,17 +647,14 @@ func (ax *Nexodus) Reconcile() error {
 		}
 	}
 	updatePeers := map[string]public.ModelsDevice{}
-	changed := false
 	for _, p := range peerMap {
 		existing, ok := ax.deviceCache[p.PublicKey]
 		if !ok {
-			ax.addToDeviceCache(p)
+			ax.updateDeviceCache(p)
 			updatePeers[p.PublicKey] = p
-			changed = true
 		} else if !reflect.DeepEqual(existing.device, p) {
-			ax.addToDeviceCache(p)
+			ax.updateDeviceCache(p)
 			updatePeers[p.PublicKey] = p
-			changed = true
 		}
 		if p.Relay {
 			ax.relayWgIP = p.AllowedIps[0]
@@ -640,15 +662,13 @@ func (ax *Nexodus) Reconcile() error {
 		}
 	}
 
-	if changed {
-		ax.buildPeersConfig()
-		if len(updatePeers) > 0 {
-			if err := ax.DeployWireguardConfig(updatePeers); err != nil {
-				// If the wireguard configuration fails, we should wipe out our peer list
-				// so it is rebuilt and reconfigured from scratch the next time around.
-				ax.wgConfig.Peers = nil
-				return err
-			}
+	ax.buildPeersConfig(updatePeers)
+	if len(updatePeers) > 0 {
+		if err := ax.DeployWireguardConfig(updatePeers); err != nil {
+			// If the wireguard configuration fails, we should wipe out our peer list
+			// so it is rebuilt and reconfigured from scratch the next time around.
+			ax.wgConfig.Peers = nil
+			return err
 		}
 	}
 

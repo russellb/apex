@@ -4,10 +4,6 @@ import (
 	"github.com/nexodus-io/nexodus/internal/api/public"
 )
 
-const (
-	persistentKeepalive = "20"
-)
-
 func (ax *Nexodus) DeployWireguardConfig(updatedPeers map[string]public.ModelsDevice) error {
 	cfg := &wgConfig{
 		Interface: ax.wgConfig.Interface,

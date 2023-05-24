@@ -4,20 +4,93 @@ import (
 	"net"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/nexodus-io/nexodus/internal/api/public"
 )
 
+const (
+	persistentKeepalive = "20"             // seconds
+	localPeeringTimeout = 30 * time.Second // longer than persistentKeepalive
+)
+
 // buildPeersConfig builds the peer configuration based off peer cache and peer listings from the controller
-func (ax *Nexodus) buildPeersConfig() {
-	peers := ax.buildPeersAndRelay()
+func (ax *Nexodus) buildPeersConfig(updatedDevices map[string]public.ModelsDevice) []string {
+	peers, changedPeers := ax.buildPeersAndRelay(updatedDevices)
 	ax.wgConfig.Peers = peers
+	return changedPeers
 }
 
-// buildPeersAndRelay constructs the peer configuration returning it as []wgPeerConfig.
-// This also call the method for building the local interface configuration wgLocalConfig.
-func (ax *Nexodus) buildPeersAndRelay() map[string]wgPeerConfig {
+func isWorking(peer WgSessions) bool {
+	return peer.LastHandshakeTime.After(time.Now().Add(-localPeeringTimeout))
+}
+
+// localPeerCandidate determines whether this peer is a candidate for peering via its local address.
+func (nx *Nexodus) localPeerCandidate(d deviceCacheEntry, peerStats map[string]WgSessions, reflexiveIP4 string) bool {
+	// We must be behind the same reflexive address as the peer
+	if nx.nodeReflexiveAddressIPv4.Addr().String() != parseIPfromAddrPort(reflexiveIP4) {
+		nx.logger.Infof("Peer %s is not behind the same reflexive address as us", d.device.PublicKey)
+		return false
+	}
+
+	// We've already fallen back to reflexive IP peering
+	if d.reflexivePeeringFallback {
+		nx.logger.Infof("Peer %s has already fallen back to reflexive IP peering", d.device.PublicKey)
+		return false
+	}
+
+	// Determine whether we tried, it hasn't worked, and we should fall back to our next best option
+	window := time.Now().Add(-localPeeringTimeout)
+
+	// cache entry is old enough (we have given it enough time to try and connect)
+	// and the last handshake time is too long ago
+	stats, ok := peerStats[d.device.PublicKey]
+	if !ok {
+		nx.logger.Debugf("Peer %s not in peerStats: %s", d.device.PublicKey, peerStats)
+	}
+
+	if ok && window.After(d.lastUpdated) && window.After(stats.LastHandshakeTime) {
+		nx.logger.Debugf("Peer %s has not connected via local IP, falling back to reflexive IP", d.device.PublicKey)
+		nx.deviceCache[d.device.PublicKey] = deviceCacheEntry{
+			device:                   d.device,
+			reflexivePeeringFallback: true,
+			lastUpdated:              time.Now(),
+		}
+		return false
+	}
+
+	return true
+}
+
+func equalSets(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for _, aVal := range a {
+		found := false
+		for _, bVal := range b {
+			if aVal == bVal {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
+// buildPeersAndRelay builds the peer configuration based off peer cache and local state.
+// This also calls the method for building the local interface configuration wgLocalConfig.
+// If changed is true, this was called as a result of a change to the device cache.
+func (ax *Nexodus) buildPeersAndRelay(updatedDevices map[string]public.ModelsDevice) (map[string]wgPeerConfig, []string) {
+	// full config map
 	peers := map[string]wgPeerConfig{}
+	// whether any devices have changed
+	changed := len(updatedDevices) > 0
+	// track which peers we changed configuration for
+	changedPeers := []string{}
 
 	_, ax.wireguardPubKeyInConfig = ax.deviceCache[ax.wireguardPubKey]
 
@@ -27,7 +100,11 @@ func (ax *Nexodus) buildPeersAndRelay() map[string]wgPeerConfig {
 	}
 
 	ax.buildLocalConfig()
-
+	peerStats, err := ax.DumpPeers(ax.tunnelIface)
+	if err != nil {
+		ax.logger.Errorf("Failed to get current peer details from wg: %w", err)
+		peerStats = make(map[string]WgSessions)
+	}
 	for _, d := range ax.deviceCache {
 		// skip ourselves
 		if d.device.PublicKey == ax.wireguardPubKey {
@@ -41,7 +118,7 @@ func (ax *Nexodus) buildPeersAndRelay() map[string]wgPeerConfig {
 		if ax.relay {
 			peer := ax.buildPeerForRelayNode(d.device, localIP, reflexiveIP4)
 			peers[d.device.PublicKey] = peer
-			ax.logPeerInfo(d.device, reflexiveIP4)
+			ax.logPeerInfo(d.device, reflexiveIP4, changed)
 			continue
 		}
 
@@ -49,15 +126,33 @@ func (ax *Nexodus) buildPeersAndRelay() map[string]wgPeerConfig {
 		if d.device.Relay {
 			peerRelay := ax.buildRelayPeer(d.device, relayAllowedIP, localIP, reflexiveIP4)
 			peers[d.device.PublicKey] = peerRelay
-			ax.logPeerInfo(d.device, peerRelay.Endpoint)
+			ax.logPeerInfo(d.device, peerRelay.Endpoint, changed)
 			continue
 		}
 
-		// We are behind the same reflexive address as the peer, try local peering first
-		if ax.nodeReflexiveAddressIPv4.Addr().String() == parseIPfromAddrPort(reflexiveIP4) {
+		// If it's working and the config has not changed, leave it alone.
+		curStats, ok := peerStats[d.device.PublicKey]
+		if ok && isWorking(curStats) {
+			_, deviceChanged := updatedDevices[d.device.PublicKey]
+			if !deviceChanged {
+				// it's working and nothing changed in the device config
+				continue
+			}
+			// did something change that matters?
+			curConfig, ok := ax.wgConfig.Peers[d.device.PublicKey]
+			if ok && equalSets(curConfig.AllowedIPs, d.device.AllowedIps) &&
+				(curConfig.Endpoint == reflexiveIP4 || curConfig.Endpoint == localIP) {
+				// AllowedIPs still the same, and the endpoint is still valid
+				continue
+			}
+			// It's working, but something changed. We need to reconfigure it.
+		}
+
+		// Determine if this is a candidate for attempting to peer via its local address
+		if ax.localPeerCandidate(d, peerStats, reflexiveIP4) {
 			peer := ax.buildDirectLocalPeer(d.device, localIP, peerPort)
 			peers[d.device.PublicKey] = peer
-			ax.logPeerInfo(d.device, localIP)
+			ax.logPeerInfo(d.device, localIP, changed)
 			continue
 		}
 
@@ -70,11 +165,11 @@ func (ax *Nexodus) buildPeersAndRelay() map[string]wgPeerConfig {
 		if !d.device.SymmetricNat {
 			peer := ax.buildDefaultPeer(d.device, reflexiveIP4)
 			peers[d.device.PublicKey] = peer
-			ax.logPeerInfo(d.device, reflexiveIP4)
+			ax.logPeerInfo(d.device, reflexiveIP4, changed)
 		}
 	}
 
-	return peers
+	return peers, changedPeers
 }
 
 // extractLocalAndReflexiveIP retrieve the local and reflexive endpoint addresses
@@ -157,7 +252,10 @@ func (ax *Nexodus) buildDefaultPeer(device public.ModelsDevice, reflexiveIP4 str
 	}
 }
 
-func (ax *Nexodus) logPeerInfo(device public.ModelsDevice, endpointIP string) {
+func (ax *Nexodus) logPeerInfo(device public.ModelsDevice, endpointIP string, changed bool) {
+	if !changed {
+		return
+	}
 	ax.logger.Debugf("Peer Configuration - Peer AllowedIps [ %s ] Peer Endpoint IP [ %s ] Peer Public Key [ %s ]",
 		strings.Join(device.AllowedIps, ", "),
 		endpointIP,

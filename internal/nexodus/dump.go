@@ -3,6 +3,7 @@ package nexodus
 import (
 	"encoding/base64"
 	"encoding/hex"
+	"os"
 	"strings"
 	"time"
 
@@ -38,6 +39,10 @@ func pubKeyHexToBase64(s string) string {
 }
 
 func (nx *Nexodus) DumpPeersUS(iface string) (map[string]WgSessions, error) {
+	if nx.userspaceDev == nil {
+		return map[string]WgSessions{}, nil
+	}
+
 	fullConfig, err := nx.userspaceDev.IpcGet()
 	if err != nil {
 		nx.logger.Errorf("Failed to read back full wireguard config: %w", err)
@@ -108,7 +113,11 @@ func (nx *Nexodus) DumpPeersOS(iface string) (map[string]WgSessions, error) {
 	}
 	device, err := c.Device(iface)
 	if err != nil {
-		return nil, err
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		// wireguard interface has not been configured yet
+		return map[string]WgSessions{}, nil
 	}
 	peers := make(map[string]WgSessions)
 	for _, peer := range device.Peers {
