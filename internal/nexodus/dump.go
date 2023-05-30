@@ -1,7 +1,11 @@
 package nexodus
 
 import (
+	"encoding/base64"
+	"encoding/hex"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/nexodus-io/nexodus/internal/util"
 	"golang.zx2c4.com/wireguard/wgctrl"
@@ -9,23 +13,36 @@ import (
 
 // WgSessions wireguard peer session information
 type WgSessions struct {
-	PublicKey       string
-	PreSharedKey    string
-	Endpoint        string
-	AllowedIPs      []string
-	LatestHandshake string
-	Tx              int64
-	Rx              int64
+	PublicKey         string
+	PreSharedKey      string
+	Endpoint          string
+	AllowedIPs        []string
+	LatestHandshake   string
+	LastHandshakeTime time.Time `json:"-"`
+	Tx                int64
+	Rx                int64
 }
 
-func (nx *Nexodus) DumpPeers(iface string) ([]WgSessions, error) {
+func (nx *Nexodus) DumpPeers(iface string) (map[string]WgSessions, error) {
 	if nx.userspaceMode {
 		return nx.DumpPeersUS(iface)
 	}
-	return DumpPeersOS(iface)
+	return nx.DumpPeersOS(iface)
 }
 
-func (nx *Nexodus) DumpPeersUS(iface string) ([]WgSessions, error) {
+func pubKeyHexToBase64(s string) string {
+	decoded, err := hex.DecodeString(s)
+	if err != nil {
+		return ""
+	}
+	return base64.StdEncoding.EncodeToString(decoded)
+}
+
+func (nx *Nexodus) DumpPeersUS(iface string) (map[string]WgSessions, error) {
+	if nx.userspaceDev == nil {
+		return map[string]WgSessions{}, nil
+	}
+
 	fullConfig, err := nx.userspaceDev.IpcGet()
 	if err != nil {
 		nx.logger.Errorf("Failed to read back full wireguard config: %w", err)
@@ -48,7 +65,7 @@ func (nx *Nexodus) DumpPeersUS(iface string) ([]WgSessions, error) {
 
 	// Parse fullConfig string by line of key=value pairs
 	// and build a list of WgSessions
-	peers := make([]WgSessions, 0)
+	peers := make(map[string]WgSessions)
 	peer := WgSessions{}
 	for _, line := range strings.Split(fullConfig, "\n") {
 		kv := util.SplitKeyValue(line)
@@ -58,17 +75,21 @@ func (nx *Nexodus) DumpPeersUS(iface string) ([]WgSessions, error) {
 		switch kv[0] {
 		case "public_key":
 			if peer.PublicKey != "" {
-				// Append previous peer
-				peers = append(peers, peer)
+				// Add previous peer
+				peers[peer.PublicKey] = peer
 				peer = WgSessions{}
 			}
-			peer.PublicKey = kv[1]
+			peer.PublicKey = pubKeyHexToBase64(kv[1])
 		case "preshared_key":
 			peer.PreSharedKey = kv[1]
 		case "endpoint":
 			peer.Endpoint = kv[1]
 		case "last_handshake_time_sec":
 			peer.LatestHandshake = kv[1]
+			peer.LastHandshakeTime, err = util.ParseTime(kv[1])
+			if err != nil {
+				nx.logger.Errorf("Failed to parse last handshake time: %w", err)
+			}
 		case "tx_bytes":
 			peer.Tx = util.StringToInt64(kv[1])
 		case "rx_bytes":
@@ -77,34 +98,44 @@ func (nx *Nexodus) DumpPeersUS(iface string) ([]WgSessions, error) {
 			peer.AllowedIPs = append(peer.AllowedIPs, kv[1])
 		}
 	}
-	// Append last peer
+	// Add last peer
 	if peer.PublicKey != "" {
-		peers = append(peers, peer)
+		peers[peer.PublicKey] = peer
 	}
 	return peers, nil
 }
 
 // DumpPeers dump wireguard peers
-func DumpPeersOS(iface string) ([]WgSessions, error) {
+func (nx *Nexodus) DumpPeersOS(iface string) (map[string]WgSessions, error) {
 	c, err := wgctrl.New()
 	if err != nil {
 		return nil, err
 	}
 	device, err := c.Device(iface)
 	if err != nil {
-		return nil, err
+		if !os.IsNotExist(err) {
+			return nil, err
+		}
+		// wireguard interface has not been configured yet
+		return map[string]WgSessions{}, nil
 	}
-	peers := make([]WgSessions, 0)
+	peers := make(map[string]WgSessions)
 	for _, peer := range device.Peers {
-		peers = append(peers, WgSessions{
-			PublicKey:       peer.PublicKey.String(),
+		pubKey := peer.PublicKey.String()
+		s := WgSessions{
+			PublicKey:       pubKey,
 			PreSharedKey:    peer.PresharedKey.String(),
 			Endpoint:        peer.Endpoint.String(),
 			AllowedIPs:      util.IPNetSliceToStringSlice(peer.AllowedIPs),
 			LatestHandshake: peer.LastHandshakeTime.String(),
 			Tx:              peer.TransmitBytes,
 			Rx:              peer.ReceiveBytes,
-		})
+		}
+		s.LastHandshakeTime, err = util.ParseTime(s.LatestHandshake)
+		if err != nil {
+			nx.logger.Errorf("Failed to parse last handshake time: %w", err)
+		}
+		peers[pubKey] = s
 	}
 	return peers, nil
 }
