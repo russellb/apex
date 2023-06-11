@@ -184,6 +184,11 @@ func main() {
 							return deleteDevice(mustCreateAPIClient(cCtx), encodeOut, devID)
 						},
 					},
+					{
+						Name:        "metadata",
+						Usage:       "Commands relating to device metadata",
+						Subcommands: deviceMetadataSubcommands,
+					},
 				},
 			},
 			{
