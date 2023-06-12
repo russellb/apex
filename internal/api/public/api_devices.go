@@ -934,7 +934,7 @@ func (a *DevicesApiService) GetDeviceMetadataExecute(r ApiGetDeviceMetadataReque
 			body:  localVarBody,
 			error: localVarHTTPResponse.Status,
 		}
-		if localVarHTTPResponse.StatusCode == 501 {
+		if localVarHTTPResponse.StatusCode == 500 {
 			var v ModelsBaseError
 			err = a.client.decode(&v, localVarBody, localVarHTTPResponse.Header.Get("Content-Type"))
 			if err != nil {

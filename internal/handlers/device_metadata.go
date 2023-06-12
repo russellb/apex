@@ -1,12 +1,23 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/nexodus-io/nexodus/internal/models"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+	"gorm.io/gorm"
 )
+
+func (api *API) metadataForDevice(c *gin.Context, deviceId string) func(db *gorm.DB) *gorm.DB {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("device_id = ?", deviceId)
+	}
+}
 
 // GetDeviceMetadata lists metadata for a device
 // @Summary      Get Device Metadata
@@ -17,10 +28,56 @@ import (
 // @Accept	     json
 // @Produce      json
 // @Success      200  {object}  models.DeviceMetadata
-// @Failure      501  {object}  models.BaseError
+// @Failure      500  {object}  models.BaseError
 // @Router       /api/devices/{id}/metadata [get]
 func (api *API) GetDeviceMetadata(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, models.NewApiInternalError(fmt.Errorf("not implemented")))
+	ctx, span := tracer.Start(c.Request.Context(), "GetDeviceMetadata", trace.WithAttributes(
+		attribute.String("id", c.Param("id")),
+	))
+	defer span.End()
+	k, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, models.NewBadPathParameterError("id"))
+		return
+	}
+	metadataInstances := make([]models.DeviceMetadataInstance, 0)
+
+	err = api.transaction(ctx, func(tx *gorm.DB) error {
+		var device models.Device
+		result := api.db.WithContext(ctx).
+			Scopes(api.DeviceIsOwnedByCurrentUser(c)).
+			First(&device, "id = ?", k)
+		if result.Error != nil {
+			return result.Error
+		}
+
+		result = api.db.WithContext(ctx).Scopes(
+			api.metadataForDevice(c, k.String()),
+			FilterAndPaginate(&models.DeviceMetadataInstance{}, c, "device_id")).
+			Find(&metadataInstances)
+		if result.Error != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"message": "error fetching keys from db"})
+			return result.Error
+		}
+
+		return nil
+	})
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		api.logger.Errorf("error fetching metadata: %s", err)
+		c.JSON(http.StatusInternalServerError, err)
+	}
+	result := models.DeviceMetadata{
+		DeviceID: k,
+		Metadata: make(map[string]string),
+	}
+	for _, metadata := range metadataInstances {
+		result.Metadata[metadata.Key] = metadata.Value
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 // GetDeviceMetadata Get value for a metadata key on a device

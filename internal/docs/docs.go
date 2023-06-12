@@ -324,8 +324,8 @@ const docTemplate = `{
                             "$ref": "#/definitions/models.DeviceMetadata"
                         }
                     },
-                    "501": {
-                        "description": "Not Implemented",
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/models.BaseError"
                         }
