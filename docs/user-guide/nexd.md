@@ -62,6 +62,7 @@ USAGE:
 OPTIONS:
    --ingress value [ --ingress value ]  Forward connections from the Nexodus network made to [port] on this proxy instance to port [destination_port] at [destination_ip] via a locally accessible network using a value in the form: protocol:port:destination_ip:destination_port. All fields are required.
    --egress value [ --egress value ]    Forward connections from a locally accessible network made to [port] on this proxy instance to port [destination_port] at [destination_ip] via the Nexodus network using a value in the form: protocol:port:destination_ip:destination_port. All fields are required.
+   --run-test-service                   Run a test service within the proxy instance to provide a quick and easy network endpoint on a nexodus network for testing purposes. You can connect to the proxy's nexodus IP on port 80 via http. This option can not be combined with an --ingress proxy rule listening on port 80. (default: false)
    --help, -h                           Show help (default: false)
 ```
 

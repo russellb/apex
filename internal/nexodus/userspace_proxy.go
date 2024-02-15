@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/nexodus-io/nexodus/internal/state"
 	"io"
 	"net"
 	"os"
@@ -12,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/nexodus-io/nexodus/internal/state"
 
 	"github.com/bytedance/gopkg/util/logger"
 
@@ -603,5 +604,65 @@ func (proxy *UsProxy) handleTCPConnection(ctx context.Context, proxyWg *sync.Wai
 		logger.Debugf("Error copying data from inConn to outConn: ", err)
 	}
 
+	return nil
+}
+
+func (nx *Nexodus) startUserspaceTestService(ctx context.Context, wg *sync.WaitGroup) {
+	var l net.Listener
+	l, err := nx.userspaceNet.ListenTCP(&net.TCPAddr{Port: 80})
+	if err != nil {
+		nx.logger.Fatal("Failed to start test service: ", err)
+		return
+	}
+	nx.userspaceTestSvcListener = &l
+	nx.logger.Info("Started test service on port 80")
+
+	util.GoWithWaitGroup(wg, func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				// a canceled context indicates a normal shutdown.
+				if ctx.Err() == nil {
+					nx.logger.Error("Error on Accept() for the test service, exiting test service: ", err)
+				}
+				break
+			}
+			util.GoWithWaitGroup(wg, func() {
+				remoteAddr := "unknown"
+				if conn.RemoteAddr() != nil {
+					remoteAddr = conn.RemoteAddr().String()
+				}
+				err = nx.handleTestSvcConn(ctx, conn)
+				nx.logger.Debugf("Connection to test service from %s closed: %v", remoteAddr, err)
+			})
+		}
+	})
+}
+
+func (nx *Nexodus) handleTestSvcConn(ctx context.Context, inConn net.Conn) error {
+	defer util.IgnoreError(inConn.Close)
+
+	nx.logger.Debugf("Handling connection to test service from %s", inConn.RemoteAddr().String())
+
+	buf := make([]byte, 1024)
+	n, err := inConn.Read(buf)
+	if err != nil {
+		nx.logger.Debugf("Error reading from test service: ", err)
+		return err
+	}
+	nx.logger.Debugf("Read from test service: %s", string(buf[:n]))
+
+	bufS := string(buf[:n])
+	if len(bufS) >= 16 && bufS[:16] == "GET / HTTP/1.1\r\n" {
+		// Allow the most trivial http request
+		_, err = inConn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Length: 43\r\n\r\nHello from the Nexodus proxy test service!\n"))
+	} else {
+		// Otherwise just act as an echo server
+		_, err = inConn.Write(buf[:n])
+	}
+	if err != nil {
+		nx.logger.Debugf("Error writing to test service: ", err)
+		return err
+	}
 	return nil
 }

@@ -83,9 +83,11 @@ type userspaceWG struct {
 	userspaceNet  *netstack.Net
 	userspaceDev  *device.Device
 	// the last address configured on the userspace wireguard interface
-	userspaceLastAddress string
-	proxyLock            sync.RWMutex
-	proxies              map[ProxyKey]*UsProxy
+	userspaceLastAddress     string
+	proxyLock                sync.RWMutex
+	proxies                  map[ProxyKey]*UsProxy
+	userspaceTestService     bool
+	userspaceTestSvcListener *net.Listener
 }
 
 type nexRelay struct {
@@ -205,6 +207,7 @@ type Options struct {
 	UserProvidedLocalIP     string
 	Username                string
 	UserspaceMode           bool
+	UserspaceTestService    bool
 	Version                 string
 	VpcId                   string
 	SecurityGroupId         string
@@ -323,7 +326,8 @@ func New(o Options) (*Nexodus, error) {
 		deviceCache: make(map[string]deviceCacheEntry),
 		status:      NexdStatusStarting,
 		userspaceWG: userspaceWG{
-			proxies: map[ProxyKey]*UsProxy{},
+			proxies:              map[ProxyKey]*UsProxy{},
+			userspaceTestService: o.UserspaceTestService,
 		},
 		Derper: o.Derper,
 		nexRelay: nexRelay{
@@ -703,6 +707,9 @@ func (nx *Nexodus) Start(ctx context.Context, wg *sync.WaitGroup) error {
 		for _, proxy := range nx.proxies {
 			proxy.Start(ctx, wg, nx.userspaceNet)
 		}
+		if nx.userspaceMode && nx.userspaceTestService {
+			nx.startUserspaceTestService(ctx, wg)
+		}
 		if nx.exitNode.exitNodeClientEnabled {
 			if err := nx.ExitNodeClientSetup(); err != nil {
 				nx.logger.Errorf("failed to enable this device as an exit-node client: %v", err)
@@ -842,6 +849,9 @@ func (nx *Nexodus) fetchUserIdAndVpcFromAPI(ctx context.Context) (string, *publi
 
 func (nx *Nexodus) Stop() {
 	nx.logger.Info("Stopping nexd")
+	if nx.userspaceMode && nx.userspaceTestService && nx.userspaceTestSvcListener != nil {
+		_ = (*nx.userspaceTestSvcListener).Close()
+	}
 	for _, proxy := range nx.proxies {
 		proxy.Stop()
 	}

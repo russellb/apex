@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"math"
 	"net/url"
 	"os"
@@ -14,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+
+	"github.com/google/uuid"
 
 	"github.com/nexodus-io/nexodus/internal/state/fstore"
 	"github.com/nexodus-io/nexodus/internal/state/kstore"
@@ -209,6 +210,7 @@ func nexdRun(ctx context.Context, command *cli.Command, logger *zap.Logger, logL
 		InsecureSkipTlsVerify:   command.Bool("insecure-skip-tls-verify"),
 		Version:                 Version,
 		UserspaceMode:           userspaceMode,
+		UserspaceTestService:    command.Bool("run-test-service"),
 		StateStore:              stateStore,
 		StateDir:                stateDir,
 		Context:                 ctx,
@@ -328,6 +330,11 @@ func main() {
 					&cli.StringSliceFlag{
 						Name:     "egress",
 						Usage:    "Forward connections from a locally accessible network made to [port] on this proxy instance to port [destination_port] at [destination_ip] via the Nexodus network using a `value` in the form: protocol:port:destination_ip:destination_port. All fields are required.",
+						Required: false,
+					},
+					&cli.BoolFlag{
+						Name:     "run-test-service",
+						Usage:    "Run a test service within the proxy instance to provide a quick and easy network endpoint on a nexodus network for testing purposes. You can connect to the proxy's nexodus IP on port 80 via http. This option can not be combined with an --ingress proxy rule listening on port 80.",
 						Required: false,
 					},
 				},
